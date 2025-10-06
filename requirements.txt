@@ -1,0 +1,8 @@
+Django==4.2.7
+Pillow==10.1.0
+razorpay==1.4.1
+reportlab==4.0.7
+python-decouple==3.8
+whitenoise
+gunicorn
+xhtml2pdf

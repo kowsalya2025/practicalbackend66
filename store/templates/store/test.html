@@ -1,0 +1,663 @@
+
+<!-- {% extends 'store/base.html' %}
+
+{% block title %}Payment - E-Commerce Store{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-primary text-white text-center">
+                    <h4>Complete Your Payment</h4>
+                </div>
+                <div class="card-body text-center">
+                    <h2 class="mb-4">₹{{ order.total_amount }}</h2>
+                    <p>Order ID: <strong>{{ order.order_id }}</strong></p>
+                    <button id="rzp-button" class="btn btn-success btn-lg">
+                        <i class="fas fa-lock"></i> Pay with Razorpay
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+var options = {
+    "key": "{{ razorpay_key_id }}",
+    "amount": "{{ amount }}",
+    "currency": "INR",
+    "name": "ShopEase",
+    "description": "Order #{{ order.order_id }}",
+    "order_id": "{{ razorpay_order_id }}",
+    "handler": function (response){
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{% url "payment_success" %}';
+        
+        var csrfToken = document.createElement('input');
+        csrfToken.type = 'hidden';
+        csrfToken.name = 'csrfmiddlewaretoken';
+        csrfToken.value = '{{ csrf_token }}';
+        form.appendChild(csrfToken);
+        
+        var paymentId = document.createElement('input');
+        paymentId.type = 'hidden';
+        paymentId.name = 'razorpay_payment_id';
+        paymentId.value = response.razorpay_payment_id;
+        form.appendChild(paymentId);
+        
+        var orderId = document.createElement('input');
+        orderId.type = 'hidden';
+        orderId.name = 'razorpay_order_id';
+        orderId.value = response.razorpay_order_id;
+        form.appendChild(orderId);
+        
+        var signature = document.createElement('input');
+        signature.type = 'hidden';
+        signature.name = 'razorpay_signature';
+        signature.value = response.razorpay_signature;
+        form.appendChild(signature);
+        
+        document.body.appendChild(form);
+        form.submit();
+    },
+    "prefill": {
+        "name": "{{ order.full_name }}",
+        "email": "{{ order.email }}",
+        "contact": "{{ order.phone }}"
+    },
+    "theme": {
+        "color": "#4CAF50"
+    }
+};
+
+var rzp = new Razorpay(options);
+
+document.getElementById('rzp-button').onclick = function(e){
+    rzp.open();
+    e.preventDefault();
+}
+</script>
+{% endblock %} -->
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from django.http import JsonResponse, HttpResponse, FileResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.conf import settings
+from .models import Category, Product, Cart, CartItem, Order, OrderItem
+from .forms import CheckoutForm
+from .utils import generate_gst_invoice
+import razorpay
+import json
+from decimal import Decimal
+
+# Initialize Razorpay client
+razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+
+# def get_or_create_cart(request):
+#     if request.user.is_authenticated:
+#         cart, created = Cart.objects.get_or_create(user=request.user)
+#     else:
+#         if not request.session.session_key:
+#             request.session.create()
+#         session_key = request.session.session_key
+#         cart, created = Cart.objects.get_or_create(session_key=session_key)
+#     return cart
+
+def home(request):
+    categories = Category.objects.all()
+    featured_products = Product.objects.filter(is_active=True, featured=True)[:8]
+    latest_products = Product.objects.filter(is_active=True).order_by('-created_at')[:8]
+    
+    context = {
+        'categories': categories,
+        'featured_products': featured_products,
+        'latest_products': latest_products,
+    }
+    return render(request, 'store/home.html', context)
+
+def category_view(request, slug):
+    category = get_object_or_404(Category, slug=slug)
+    products = Product.objects.filter(category=category, is_active=True)
+    
+    context = {
+        'category': category,
+        'products': products,
+    }
+    return render(request, 'store/category.html', context)
+
+def product_detail(request, slug):
+    product = get_object_or_404(Product, slug=slug, is_active=True)
+    related_products = Product.objects.filter(
+        category=product.category, 
+        is_active=True
+    ).exclude(id=product.id)[:4]
+    
+    context = {
+        'product': product,
+        'related_products': related_products,
+    }
+    return render(request, 'store/product_detail.html', context)
+
+def add_to_cart(request, product_id):
+    product = get_object_or_404(Product, id=product_id)
+    
+    if product.stock <= 0:
+        messages.error(request, 'Product is out of stock!')
+        return redirect('product_detail', slug=product.slug)
+    
+    cart = get_or_create_cart(request)
+    cart_item, created = CartItem.objects.get_or_create(cart=cart, product=product)
+    
+    if not created:
+        if cart_item.quantity < product.stock:
+            cart_item.quantity += 1
+            cart_item.save()
+        else:
+            messages.warning(request, 'Cannot add more items. Stock limit reached!')
+            return redirect('cart_view')
+    
+    messages.success(request, f'{product.name} added to cart!')
+    return redirect('cart_view')
+
+def cart_view(request):
+    cart = get_or_create_cart(request)
+    cart_items = cart.items.all()
+    
+    context = {
+        'cart': cart,
+        'cart_items': cart_items,
+    }
+    return render(request, 'store/cart.html', context)
+
+def update_cart(request, item_id):
+    if request.method == 'POST':
+        cart_item = get_object_or_404(CartItem, id=item_id)
+        action = request.POST.get('action')
+        
+        if action == 'increase':
+            if cart_item.quantity < cart_item.product.stock:
+                cart_item.quantity += 1
+                cart_item.save()
+            else:
+                return JsonResponse({'status': 'error', 'message': 'Stock limit reached'})
+        elif action == 'decrease':
+            if cart_item.quantity > 1:
+                cart_item.quantity -= 1
+                cart_item.save()
+            else:
+                return JsonResponse({'status': 'error', 'message': 'Minimum quantity is 1'})
+        
+        return JsonResponse({
+            'status': 'success',
+            'quantity': cart_item.quantity,
+            'subtotal': float(cart_item.get_subtotal()),
+            'cart_total': float(cart_item.cart.get_total())
+        })
+    
+    return JsonResponse({'status': 'error'})
+
+def remove_from_cart(request, item_id):
+    cart_item = get_object_or_404(CartItem, id=item_id)
+    cart_item.delete()
+    messages.success(request, 'Item removed from cart!')
+    return redirect('cart_view')
+
+
+from decimal import Decimal
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.conf import settings
+import razorpay
+from .models import Cart, Order, OrderItem
+from .forms import CheckoutForm
+from .utils import get_or_create_cart
+
+# Razorpay client (Test Mode keys)
+razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+
+def checkout(request):
+    cart = get_or_create_cart(request)
+    cart_items = cart.items.all()
+
+    if not cart_items.exists():
+        messages.warning(request, "Your cart is empty!")
+        return redirect("home")
+
+    # Calculate totals
+    subtotal = sum(item.product.get_selling_price() * item.quantity for item in cart_items)
+    gst_amount = sum((item.product.get_selling_price() * item.quantity * item.product.gst_rate)/100 for item in cart_items)
+    total_amount = subtotal + gst_amount
+
+    if request.method == "POST":
+        form = CheckoutForm(request.POST)
+        if form.is_valid():
+            # Create Order
+            order = form.save(commit=False)
+            if request.user.is_authenticated:
+                order.user = request.user
+            order.subtotal = subtotal
+            order.gst_amount = gst_amount
+            order.total_amount = total_amount
+            order.save()
+
+            # Create Razorpay order
+            razorpay_order = razorpay_client.order.create({
+                "amount": int(float(total_amount) * 100),  # amount in paise
+                "currency": "INR",
+                "payment_capture": 1
+            })
+            order.razorpay_order_id = razorpay_order["id"]
+            order.save()
+
+            # Create order items
+            for item in cart_items:
+                OrderItem.objects.create(
+                    order=order,
+                    product=item.product,
+                    quantity=item.quantity,
+                    price=item.product.get_selling_price(),
+                    hsn_code=item.product.hsn_code,
+                    gst_rate=item.product.gst_rate
+                )
+
+            # Store order id in session
+            request.session["order_id"] = order.id
+
+            # Render payment page
+            context = {
+                "order": order,
+                "razorpay_order_id": razorpay_order["id"],
+                "razorpay_key_id": settings.RAZORPAY_KEY_ID,
+                "amount": int(float(total_amount) * 100),
+            }
+            return render(request, "store/payment.html", context)
+
+    else:
+        form = CheckoutForm(initial={
+            "full_name": request.user.get_full_name() if request.user.is_authenticated else "",
+            "email": request.user.email if request.user.is_authenticated else ""
+        })
+
+    context = {
+        "form": form,
+        "cart_items": cart_items,
+        "subtotal": subtotal,
+        "gst_amount": gst_amount,
+        "total": total_amount,
+    }
+    return render(request, "store/checkout.html", context)
+
+
+# from decimal import Decimal
+# from django.shortcuts import render, redirect, get_object_or_404
+# from django.contrib import messages
+# from django.conf import settings
+# import razorpay
+# from .models import Cart, Order, OrderItem
+# from .forms import CheckoutForm
+# from .utils import get_or_create_cart
+
+# # Initialize Razorpay client with correct credentials
+# razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+
+# def checkout(request):
+#     cart = get_or_create_cart(request)
+#     cart_items = cart.items.all()
+
+#     if not cart_items.exists():
+#         messages.warning(request, "Your cart is empty!")
+#         return redirect("home")
+
+#     # Calculate totals
+#     subtotal = sum(item.product.get_selling_price() * item.quantity for item in cart_items)
+#     gst_amount = sum((item.product.get_selling_price() * item.quantity * item.product.gst_rate)/100 for item in cart_items)
+#     total_amount = subtotal + gst_amount
+
+#     if request.method == "POST":
+#         form = CheckoutForm(request.POST)
+#         if form.is_valid():
+#             # Create Order instance
+#             order = form.save(commit=False)
+#             if request.user.is_authenticated:
+#                 order.user = request.user
+#             order.subtotal = subtotal
+#             order.gst_amount = gst_amount
+#             order.total_amount = total_amount
+#             order.save()
+
+#             # Create Razorpay order
+#             razorpay_order = razorpay_client.order.create({
+#                 "amount": int(float(total_amount) * 100),  # Convert to paise
+#                 "currency": "INR",
+#                 "payment_capture": 1
+#             })
+#             order.razorpay_order_id = razorpay_order["id"]
+#             order.save()
+
+#             # Create order items
+#             for item in cart_items:
+#                 OrderItem.objects.create(
+#                     order=order,
+#                     product=item.product,
+#                     quantity=item.quantity,
+#                     price=item.product.get_selling_price(),
+#                     hsn_code=item.product.hsn_code,
+#                     gst_rate=item.product.gst_rate
+#                 )
+
+#             # Store order id in session
+#             request.session["order_id"] = order.id
+
+#             # Redirect to payment page
+#             context = {
+#                 "order": order,
+#                 "razorpay_order_id": razorpay_order["id"],
+#                 "razorpay_key_id": settings.RAZORPAY_KEY_ID,
+#                 "amount": int(float(total_amount) * 100),  # in paise
+#             }
+#             return render(request, "store/payment.html", context)
+
+#     else:
+#         initial_data = {}
+#         if request.user.is_authenticated:
+#             initial_data = {"full_name": request.user.get_full_name(), "email": request.user.email}
+#         form = CheckoutForm(initial=initial_data)
+
+#     context = {
+#         "form": form,
+#         "cart_items": cart_items,
+#         "subtotal": subtotal,
+#         "gst_amount": gst_amount,
+#         "total": total_amount,
+#     }
+#     return render(request, "store/checkout.html", context)
+
+
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from django.views.decorators.csrf import csrf_exempt
+from django.http import FileResponse
+from .models import Order, OrderItem, Product, Cart
+from .utils import get_or_create_cart, generate_gst_invoice
+from django.conf import settings
+import razorpay
+
+# Razorpay client (use test keys)
+razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+
+@csrf_exempt
+def payment_success(request):
+    if request.method != 'POST':
+        return redirect('home')
+
+    payment_id = request.POST.get('razorpay_payment_id')
+    order_id = request.POST.get('razorpay_order_id')
+    signature = request.POST.get('razorpay_signature')
+
+    if not all([payment_id, order_id, signature]):
+        messages.error(request, "Payment data missing!")
+        return redirect('home')
+
+    params_dict = {
+        'razorpay_order_id': order_id,
+        'razorpay_payment_id': payment_id,
+        'razorpay_signature': signature
+    }
+
+    try:
+        # Verify Razorpay signature
+        razorpay_client.utility.verify_payment_signature(params_dict)
+
+        # Get order
+        order = get_object_or_404(Order, razorpay_order_id=order_id)
+        order.razorpay_payment_id = payment_id
+        order.razorpay_signature = signature
+        order.payment_status = True
+        order.status = 'processing'
+        order.save()
+
+        # Update product stock
+        for item in order.items.all():
+            product = item.product
+            product.stock -= item.quantity
+            product.save()
+
+        # Generate GST Invoice
+        generate_gst_invoice(order)
+
+        # Clear cart
+        cart = get_or_create_cart(request)
+        cart.items.all().delete()
+
+        messages.success(request, 'Payment successful! Your order has been placed.')
+        return redirect('order_success', order_id=order.order_id)
+
+    except razorpay.errors.SignatureVerificationError:
+        messages.error(request, 'Payment verification failed!')
+        return redirect('home')
+    except Exception as e:
+        messages.error(request, f'Error processing payment: {str(e)}')
+        return redirect('home')
+
+
+def order_success(request, order_id):
+    order = get_object_or_404(Order, order_id=order_id)
+    context = {'order': order}
+    return render(request, 'store/order_success.html', context)
+
+
+def download_invoice(request, order_id):
+    order = get_object_or_404(Order, order_id=order_id)
+
+    if not order.invoice_generated:
+        generate_gst_invoice(order)
+
+    if order.invoice_file:
+        response = FileResponse(order.invoice_file.open('rb'), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="invoice_{order.order_id}.pdf"'
+        return response
+    else:
+        messages.error(request, 'Invoice not found!')
+        return redirect('home')
+
+
+def my_orders(request):
+    if not request.user.is_authenticated:
+        messages.warning(request, 'Please login to view your orders.')
+        return redirect('home')
+
+    orders = Order.objects.filter(user=request.user).order_by('-created_at')
+    context = {'orders': orders}
+    return render(request, 'store/my_orders.html', context)
+
+
+
+# @csrf_exempt
+# def payment_success(request):
+#     if request.method == 'POST':
+#         try:
+#             # Get payment details
+#             payment_id = request.POST.get('razorpay_payment_id')
+#             order_id = request.POST.get('razorpay_order_id')
+#             signature = request.POST.get('razorpay_signature')
+            
+#             # Verify payment signature
+#             params_dict = {
+#                 'razorpay_order_id': order_id,
+#                 'razorpay_payment_id': payment_id,
+#                 'razorpay_signature': signature
+#             }
+            
+#             try:
+#                 razorpay_client.utility.verify_payment_signature(params_dict)
+                
+#                 # Get order
+#                 order = Order.objects.get(razorpay_order_id=order_id)
+#                 order.razorpay_payment_id = payment_id
+#                 order.razorpay_signature = signature
+#                 order.payment_status = True
+#                 order.status = 'processing'
+#                 order.save()
+                
+#                 # Update product stock
+#                 for item in order.items.all():
+#                     product = item.product
+#                     product.stock -= item.quantity
+#                     product.save()
+                
+#                 # Generate GST Invoice
+#                 generate_gst_invoice(order)
+                
+#                 # Clear cart
+#                 cart = get_or_create_cart(request)
+#                 cart.items.all().delete()
+                
+#                 messages.success(request, 'Payment successful! Your order has been placed.')
+#                 return redirect('order_success', order_id=order.order_id)
+                
+#             except razorpay.errors.SignatureVerificationError:
+#                 messages.error(request, 'Payment verification failed!')
+#                 return redirect('home')
+                
+#         except Exception as e:
+#             messages.error(request, f'Error processing payment: {str(e)}')
+#             return redirect('home')
+    
+#     return redirect('home')
+
+# def order_success(request, order_id):
+#     order = get_object_or_404(Order, order_id=order_id)
+    
+#     context = {
+#         'order': order,
+#     }
+#     return render(request, 'store/order_success.html', context)
+
+# def download_invoice(request, order_id):
+#     order = get_object_or_404(Order, order_id=order_id)
+    
+#     if not order.invoice_generated:
+#         generate_gst_invoice(order)
+    
+#     if order.invoice_file:
+#         response = FileResponse(order.invoice_file.open('rb'), content_type='application/pdf')
+#         response['Content-Disposition'] = f'attachment; filename="invoice_{order.order_id}.pdf"'
+#         return response
+#     else:
+#         messages.error(request, 'Invoice not found!')
+#         return redirect('home')
+
+# def my_orders(request):
+#     if not request.user.is_authenticated:
+#         messages.warning(request, 'Please login to view your orders.')
+#         return redirect('home')
+    
+#     orders = Order.objects.filter(user=request.user).order_by('-created_at')
+    
+#     context = {
+#         'orders': orders,
+#     }
+#     return render(request, 'store/my_orders.html', context)
+
+
+
+{% extends 'store/base.html' %}
+
+{% block title %}Payment{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-primary text-white text-center">
+                    <h4>Complete Your Payment</h4>
+                </div>
+                <div class="card-body text-center">
+                    <h2>₹{{ order.total_amount }}</h2>
+                    <p>Order ID: <strong>{{ order.order_id }}</strong></p>
+                    <button id="rzp-button" class="btn btn-success btn-lg">
+                        <i class="fas fa-lock"></i> Pay with Razorpay
+                    </button>
+                    <p class="mt-3 text-muted small">
+                        💳 Use test card <strong>4111 1111 1111 1111</strong> (VISA), Exp: <strong>12/26</strong>, CVV: <strong>123</strong>.<br>
+                        No OTP required in Test Mode.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+var options = {
+    "key": "{{ razorpay_key_id }}",  // Must start with rzp_test_
+    "amount": "{{ amount }}",  // in paise (example: ₹100.50 = 10050)
+    "currency": "INR",
+    "name": "ShopEase",
+    "description": "Order #{{ order.order_id }}",
+    "order_id": "{{ razorpay_order_id }}",
+    "handler": function (response) {
+        // Submit form to Django view after success
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{% url "payment_success" %}';
+
+        var csrfToken = document.createElement('input');
+        csrfToken.type = 'hidden';
+        csrfToken.name = 'csrfmiddlewaretoken';
+        csrfToken.value = '{{ csrf_token }}';
+        form.appendChild(csrfToken);
+
+        var paymentId = document.createElement('input');
+        paymentId.type = 'hidden';
+        paymentId.name = 'razorpay_payment_id';
+        paymentId.value = response.razorpay_payment_id;
+        form.appendChild(paymentId);
+
+        var orderId = document.createElement('input');
+        orderId.type = 'hidden';
+        orderId.name = 'razorpay_order_id';
+        orderId.value = response.razorpay_order_id;
+        form.appendChild(orderId);
+
+        var signature = document.createElement('input');
+        signature.type = 'hidden';
+        signature.name = 'razorpay_signature';
+        signature.value = response.razorpay_signature;
+        form.appendChild(signature);
+
+        document.body.appendChild(form);
+        form.submit();
+    },
+    "prefill": {
+        "name": "Test User",
+        "email": "test@example.com",
+        "contact": "9999999999"  // always works in test mode
+    },
+    "theme": {
+        "color": "#4CAF50"
+    },
+    "notes": {
+        "mode": "test"  // ensures sandbox payment
+    }
+};
+
+var rzp = new Razorpay(options);
+document.getElementById('rzp-button').onclick = function(e){
+    rzp.open();
+    e.preventDefault();
+};
+</script>
+{% endblock %}

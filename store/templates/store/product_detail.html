@@ -1,0 +1,75 @@
+{% extends 'store/base.html' %}
+
+{% block title %}{{ product.name }} - E-Commerce Store{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row">
+        <div class="col-md-6">
+            <img src="{{ product.image.url }}" class="img-fluid rounded shadow" alt="{{ product.name }}">
+        </div>
+        <div class="col-md-6">
+            <h1 class="mb-3">{{ product.name }}</h1>
+            <div class="mb-3">
+                <span class="badge bg-primary">{{ product.category.name }}</span>
+                {% if product.stock > 0 %}
+                <span class="badge bg-success">In Stock: {{ product.stock }}</span>
+                {% else %}
+                <span class="badge bg-danger">Out of Stock</span>
+                {% endif %}
+            </div>
+            
+            <div class="mb-3">
+                {% if product.discounted_price %}
+                <span class="price-original h4">₹{{ product.price }}</span>
+                <span class="price-discounted h2">₹{{ product.discounted_price }}</span>
+                <span class="badge bg-danger ms-2">{{ product.get_discount_percentage }}% OFF</span>
+                {% else %}
+                <span class="price-discounted h2">₹{{ product.price }}</span>
+                {% endif %}
+            </div>
+            
+            <div class="mb-4">
+                <p class="text-muted">HSN Code: {{ product.hsn_code }} | GST: {{ product.gst_rate }}%</p>
+            </div>
+            
+            <div class="mb-4">
+                <h5>Description:</h5>
+                <p>{{ product.description }}</p>
+            </div>
+            
+            {% if product.stock > 0 %}
+            <a href="{% url 'add_to_cart' product.id %}" class="btn btn-primary btn-lg">
+                <i class="fas fa-cart-plus"></i> Add to Cart
+            </a>
+            {% else %}
+            <button class="btn btn-secondary btn-lg" disabled>Out of Stock</button>
+            {% endif %}
+        </div>
+    </div>
+    
+    {% if related_products %}
+    <div class="mt-5">
+        <h3 class="mb-4">Related Products</h3>
+        <div class="row">
+            {% for rproduct in related_products %}
+            <div class="col-md-3 mb-4">
+                <div class="card product-card">
+                    <a href="{% url 'product_detail' rproduct.slug %}">
+                        <img src="{{ rproduct.image.url }}" class="product-img card-img-top" alt="{{ rproduct.name }}">
+                    </a>
+                    <div class="card-body">
+                        <h6 class="card-title">{{ rproduct.name|truncatewords:5 }}</h6>
+                        <p class="card-text">
+                            <span class="price-discounted">₹{{ rproduct.get_selling_price }}</span>
+                        </p>
+                        <a href="{% url 'product_detail' rproduct.slug %}" class="btn btn-outline-primary btn-sm">View</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

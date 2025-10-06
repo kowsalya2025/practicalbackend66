@@ -1,0 +1,120 @@
+{% extends 'store/base.html' %}
+
+{% block title %}Home - E-Commerce Store{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<div class="bg-light py-5">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <h1 class="display-4 fw-bold">Welcome to ShopEase</h1>
+                <p class="lead">Discover amazing products at unbeatable prices</p>
+                <a href="#products" class="btn btn-primary btn-lg">Shop Now</a>
+            </div>
+            <div class="col-md-6">
+                <img src="https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=600&h=400&fit=crop" alt="Shopping" class="img-fluid rounded">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Categories -->
+<div class="container my-5">
+    <h2 class="text-center mb-4">Shop by Category</h2>
+    <div class="row">
+        {% for category in categories %}
+        <div class="col-md-3 col-sm-6 mb-4">
+            <a href="{% url 'category_view' category.slug %}" class="text-decoration-none">
+                <div class="card product-card">
+                    {% if category.image %}
+                    <img src="{{ category.image.url }}" class="card-img-top" alt="{{ category.name }}" style="height: 200px; object-fit: cover;">
+                    {% else %}
+                    <img src="https://via.placeholder.com/300x200" class="card-img-top" alt="{{ category.name }}">
+                    {% endif %}
+                    <div class="card-body text-center">
+                        <h5 class="card-title">{{ category.name }}</h5>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Featured Products -->
+<div class="container my-5" id="products">
+    <h2 class="text-center mb-4">Featured Products</h2>
+    <div class="row">
+        {% for product in featured_products %}
+        <div class="col-md-3 col-sm-6 mb-4">
+            <div class="card product-card">
+                <div class="position-relative">
+                    <a href="{% url 'product_detail' product.slug %}">
+                        <img src="{{ product.image.url }}" class="product-img card-img-top" alt="{{ product.name }}">
+                    </a>
+                    {% if product.get_discount_percentage %}
+                    <span class="badge-discount">-{{ product.get_discount_percentage }}%</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ product.name|truncatewords:5 }}</h5>
+                    <p class="card-text">
+                        {% if product.discounted_price %}
+                        <span class="price-original">₹{{ product.price }}</span>
+                        <span class="price-discounted">₹{{ product.discounted_price }}</span>
+                        {% else %}
+                        <span class="price-discounted">₹{{ product.price }}</span>
+                        {% endif %}
+                    </p>
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'product_detail' product.slug %}" class="btn btn-outline-primary btn-sm">View</a>
+                        <a href="{% url 'add_to_cart' product.id %}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-cart-plus"></i> Add
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Latest Products -->
+<div class="container my-5 bg-light py-5 rounded">
+    <h2 class="text-center mb-4">Latest Products</h2>
+    <div class="row">
+        {% for product in latest_products %}
+        <div class="col-md-3 col-sm-6 mb-4">
+            <div class="card product-card">
+                <div class="position-relative">
+                    <a href="{% url 'product_detail' product.slug %}">
+                        <img src="{{ product.image.url }}" class="product-img card-img-top" alt="{{ product.name }}">
+                    </a>
+                    {% if product.get_discount_percentage %}
+                    <span class="badge-discount">-{{ product.get_discount_percentage }}%</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ product.name|truncatewords:5 }}</h5>
+                    <p class="card-text">
+                        {% if product.discounted_price %}
+                        <span class="price-original">₹{{ product.price }}</span>
+                        <span class="price-discounted">₹{{ product.discounted_price }}</span>
+                        {% else %}
+                        <span class="price-discounted">₹{{ product.price }}</span>
+                        {% endif %}
+                    </p>
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'product_detail' product.slug %}" class="btn btn-outline-primary btn-sm">View</a>
+                        <a href="{% url 'add_to_cart' product.id %}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-cart-plus"></i> Add
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

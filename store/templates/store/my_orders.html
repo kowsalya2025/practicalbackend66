@@ -1,0 +1,56 @@
+{% extends 'store/base.html' %}
+
+{% block title %}My Orders{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  <h2 class="mb-4 text-success text-center">My Orders</h2>
+
+  {% if orders %}
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover align-middle">
+        <thead class="table-success">
+          <tr>
+            <th>Order ID</th>
+            <th>Date</th>
+            <th>Total Amount (₹)</th>
+            <th>Status</th>
+            <th>Invoice</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in orders %}
+          <tr>
+            <td>{{ order.order_id }}</td>
+            <td>{{ order.created_at|date:"d M, Y H:i" }}</td>
+            <td>₹{{ order.total_amount|floatformat:2 }}</td>
+            <td>
+              {% if order.status == 'processing' %}
+                <span class="badge bg-warning text-dark">{{ order.status|capfirst }}</span>
+              {% elif order.status == 'completed' %}
+                <span class="badge bg-success">{{ order.status|capfirst }}</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ order.status|capfirst }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if order.invoice_generated %}
+                <a href="{% url 'download_invoice' order.order_id %}" class="btn btn-sm btn-outline-success">
+                  Download
+                </a>
+              {% else %}
+                <span class="text-muted">Pending</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-info text-center">
+      You haven't placed any orders yet.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

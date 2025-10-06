@@ -1,0 +1,13 @@
+{% extends 'store/base.html' %}
+
+{% block title %}Order Success{% endblock %}
+
+{% block content %}
+<div class="container my-5 text-center">
+    <h2>🎉 Payment Successful!</h2>
+    <p>Order ID: <strong>{{ order.order_id }}</strong></p>
+    <p>Total Paid: ₹{{ order.total_amount }}</p>
+    <a href="{% url 'download_invoice' order.order_id %}" class="btn btn-primary">Download GST Invoice</a>
+</div>
+{% endblock %}
+

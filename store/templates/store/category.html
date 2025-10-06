@@ -1,0 +1,35 @@
+{% extends 'store/base.html' %}
+
+{% block title %}Products{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  <h2 class="text-center text-success mb-4">{{ category.name }}</h2>
+{% if products %}
+    <div class="row g-4">
+      {% for product in products %}
+      <div class="col-md-3 col-sm-6 d-flex align-items-stretch">
+        <div class="card shadow-sm border-0 w-100 d-flex flex-column">
+          <div class="ratio ratio-1x1">
+            <img src="{{ product.image.url }}" class="card-img-top object-fit-cover" alt="{{ product.name }}">
+          </div>
+          <div class="card-body text-center d-flex flex-column justify-content-between">
+            <div>
+              <h6 class="card-title text-truncate">{{ product.name }}</h6>
+              <p class="text-muted mb-2">₹{{ product.price }}</p>
+            </div>
+            <a href="{% url 'product_detail' product.slug %}" class="btn btn-sm btn-success mt-auto w-100">
+              View Details
+            </a>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info text-center mt-4">
+      No products found in this category.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

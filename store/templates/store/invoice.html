@@ -1,0 +1,118 @@
+{% load multiply %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice - {{ order.order_id }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            font-size: 12px;
+        }
+        .container {
+            width: 100%;
+            padding: 20px;
+        }
+        .header, .footer {
+            text-align: center;
+        }
+        .header h1 {
+            margin-bottom: 5px;
+        }
+        .header p {
+            margin: 0;
+        }
+        .billing, .order-details {
+            margin: 20px 0;
+            width: 100%;
+        }
+        .billing div {
+            margin-bottom: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        table, th, td {
+            border: 1px solid #333;
+        }
+        th, td {
+            padding: 8px;
+            text-align: center;
+        }
+        tfoot th, tfoot td {
+            font-weight: bold;
+        }
+        .text-left {
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>ShopEase</h1>
+        <p>GSTIN: XXAAAA0000X1Z5</p>
+        <p>Invoice - {{ order.order_id }}</p>
+    </div>
+
+    <div class="billing">
+        <div><strong>Billing To:</strong> {{ order.full_name }}</div>
+        <div><strong>Email:</strong> {{ order.email }}</div>
+        <div><strong>Address:</strong> {{ order.address }}</div>
+        <div><strong>Phone:</strong> {{ order.phone }}</div>
+    </div>
+
+    <div class="order-details">
+        <table>
+            <thead>
+                <tr>
+                    <th class="text-left">Product</th>
+                    <th>HSN</th>
+                    <th>Qty</th>
+                    <th>Price (₹)</th>
+                    <th>GST Rate (%)</th>
+                    <th>Total (₹)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in order_items %}
+                <tr>
+                    <td class="text-left">{{ item.product.name }}</td>
+                    <td>{{ item.hsn_code }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>{{ item.price|floatformat:2 }}</td>
+                    <td>{{ item.gst_rate }}</td>
+                    <td>{{ item.quantity|mul:item.price|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th colspan="5" class="text-right">Subtotal</th>
+                    <td>₹{{ subtotal|floatformat:2 }}</td>
+                </tr>
+                <tr>
+                    <th colspan="5" class="text-right">GST Amount</th>
+                    <td>₹{{ gst_amount|floatformat:2 }}</td>
+                </tr>
+                <tr>
+                    <th colspan="5" class="text-right">Grand Total</th>
+                    <td>₹{{ grand_total|floatformat:2 }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <div class="footer">
+        <p>Thank you for shopping with ShopEase!</p>
+        <p>This is a computer-generated invoice and does not require a signature.</p>
+    </div>
+</div>
+</body>
+</html>
+
